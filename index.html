@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WebGIS Interaktif - Karbon & Emisi Malang</title>
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Proj4js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', 'Poppins', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        /* Layout utama */
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+            position: relative;
+        }
+        /* Sidebar kiri */
+        .sidebar {
+            width: 320px;
+            background: linear-gradient(135deg, #1a2a3a 0%, #0f1a24 100%);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            box-shadow: 4px 0 20px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            text-align: center;
+            position: relative;
+        }
+        .sidebar-header h2 {
+            font-size: 1.4rem;
+            margin-bottom: 5px;
+            color: #4caf50;
+        }
+        .sidebar-header p {
+            font-size: 0.75rem;
+            opacity: 0.8;
+        }
+        .user-info {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            background: rgba(0,0,0,0.3);
+            padding: 5px;
+            border-radius: 20px;
+            display: inline-block;
+            width: auto;
+        }
+        .info-card {
+            background: rgba(255,255,255,0.1);
+            margin: 15px;
+            padding: 12px;
+            border-radius: 16px;
+            backdrop-filter: blur(4px);
+        }
+        .info-card h3 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            border-left: 3px solid #4caf50;
+            padding-left: 10px;
+        }
+        .detail-content {
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        .detail-content span {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        .chart-card {
+            background: rgba(255,255,255,0.1);
+            margin: 15px;
+            padding: 12px;
+            border-radius: 16px;
+        }
+        .chart-card h3 {
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        canvas {
+            max-height: 180px;
+            width: 100%;
+        }
+        .legend-colors {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+            font-size: 0.7rem;
+            justify-content: center;
+            padding: 0 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .color-box {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+        .footer-note {
+            text-align: center;
+            font-size: 0.65rem;
+            padding: 15px;
+            opacity: 0.6;
+            margin-top: auto;
+        }
+        .btn-logout {
+            background: none;
+            border: 1px solid #ff9800;
+            color: #ff9800;
+            padding: 4px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-top: 8px;
+            font-size: 0.7rem;
+            transition: 0.2s;
+        }
+        .btn-logout:hover {
+            background: #ff9800;
+            color: #1a2a3a;
+        }
+        /* Peta */
+        .map-container {
+            flex: 1;
+            position: relative;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            backdrop-filter: blur(5px);
+        }
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #4caf50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Modal Login/Register */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 2100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(8px);
+        }
+        .modal-content {
+            background: #1e2a36;
+            padding: 30px;
+            border-radius: 24px;
+            width: 90%;
+            max-width: 400px;
+            color: white;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            text-align: center;
+        }
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: #4caf50;
+        }
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 30px;
+            background: #2d3e4e;
+            color: white;
+            outline: none;
+        }
+        .modal-content button {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #4caf50;
+            border: none;
+            border-radius: 30px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .modal-content button:hover {
+            background: #45a049;
+        }
+        .switch-auth {
+            color: #ff9800;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
+        .error-msg {
+            color: #ff6b6b;
+            font-size: 0.75rem;
+            margin-top: 5px;
+        }
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loadingScreen" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>Memuat data spasial & peta...</p>
+</div>
+
+<!-- Modal Login/Register -->
+<div id="authModal" class="modal">
+    <div class="modal-content">
+        <h3 id="authTitle">🔐 Login Akun</h3>
+        <input type="email" id="emailInput" placeholder="Email" autocomplete="email">
+        <input type="password" id="passwordInput" placeholder="Password" autocomplete="current-password">
+        <div id="authError" class="error-msg"></div>
+        <button id="authBtn">Login</button>
+        <div class="switch-auth" id="switchAuthBtn">Belum punya akun? Daftar</div>
+    </div>
+</div>
+
+<!-- Main App Container (tampil setelah login) -->
+<div id="appContainer" class="app-container hidden">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>🌿 WebGIS Malang</h2>
+            <p>Data Karbon & Potensi Desa</p>
+            <div id="userGreeting" class="user-info"></div>
+            <button id="logoutBtn" class="btn-logout">🚪 Logout</button>
+        </div>
+
+        <div class="info-card" id="infoCard">
+            <h3>📍 Desa Terpilih</h3>
+            <div class="detail-content" id="selectedDetail">
+                <i>Klik pada peta untuk melihat detail desa</i>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>📊 Emisi & Karbon (ton)</h3>
+            <canvas id="emissionChart" width="300" height="180"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <h3>🌱 NDVI & AGB (Biomassa)</h3>
+            <canvas id="ndviChart" width="300" height="180"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <h3>🥧 Distribusi Potensi</h3>
+            <canvas id="potensiChart" width="300" height="180"></canvas>
+        </div>
+
+        <div class="legend-colors">
+            <div class="legend-item"><div class="color-box" style="background:#1b5e20;"></div> Sangat Berpotensi</div>
+            <div class="legend-item"><div class="color-box" style="background:#4caf50;"></div> Berpotensi</div>
+            <div class="legend-item"><div class="color-box" style="background:#ff9800;"></div> Cukup Berpotensi</div>
+            <div class="legend-item"><div class="color-box" style="background:#ffc107;"></div> Kurang Berpotensi</div>
+            <div class="legend-item"><div class="color-box" style="background:#f44336;"></div> Tidak Berpotensi</div>
+        </div>
+        <div class="footer-note">
+            Klik poligon untuk detail | Data: BAPPEDA Malang
+        </div>
+    </div>
+
+    <!-- PETA -->
+    <div class="map-container">
+        <div id="map"></div>
+    </div>
+</div>
+
+<script>
+    // ========== SISTEM LOGIN SEDERHANA (localStorage) ==========
+    let currentUser = null;
+
+    // Dapatkan elemen
+    const authModal = document.getElementById('authModal');
+    const appContainer = document.getElementById('appContainer');
+    const loadingScreen = document.getElementById('loadingScreen');
+    const authBtn = document.getElementById('authBtn');
+    const switchAuthBtn = document.getElementById('switchAuthBtn');
+    const authTitle = document.getElementById('authTitle');
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const authError = document.getElementById('authError');
+    const userGreeting = document.getElementById('userGreeting');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    let isLoginMode = true; // true = login, false = register
+
+    // Load user dari localStorage
+    function loadUserFromStorage() {
+        const stored = localStorage.getItem('webgis_user');
+        if (stored) {
+            try {
+                currentUser = JSON.parse(stored);
+                return true;
+            } catch(e) {}
+        }
+        return false;
+    }
+
+    // Simpan user ke localStorage
+    function saveUser(user) {
+        localStorage.setItem('webgis_user', JSON.stringify(user));
+        currentUser = user;
+    }
+
+    // Logout
+    function logout() {
+        localStorage.removeItem('webgis_user');
+        currentUser = null;
+        // Tampilkan modal login, sembunyikan app
+        appContainer.classList.add('hidden');
+        authModal.classList.remove('hidden');
+        // Reset input
+        emailInput.value = '';
+        passwordInput.value = '';
+        authError.innerText = '';
+        isLoginMode = true;
+        authTitle.innerText = '🔐 Login Akun';
+        authBtn.innerText = 'Login';
+        switchAuthBtn.innerText = 'Belum punya akun? Daftar';
+    }
+
+    // Fungsi registrasi
+    function register(email, password) {
+        // Cek apakah email sudah terdaftar
+        const users = JSON.parse(localStorage.getItem('webgis_users') || '{}');
+        if (users[email]) {
+            authError.innerText = 'Email sudah terdaftar, silakan login.';
+            return false;
+        }
+        // Simpan user baru
+        users[email] = { email, password };
+        localStorage.setItem('webgis_users', JSON.stringify(users));
+        // Langsung login
+        const user = { email };
+        saveUser(user);
+        return true;
+    }
+
+    // Login
+    function login(email, password) {
+        const users = JSON.parse(localStorage.getItem('webgis_users') || '{}');
+        if (!users[email]) {
+            authError.innerText = 'Email tidak ditemukan, silakan daftar.';
+            return false;
+        }
+        if (users[email].password !== password) {
+            authError.innerText = 'Password salah.';
+            return false;
+        }
+        const user = { email };
+        saveUser(user);
+        return true;
+    }
+
+    // Toggle mode login/register
+    function toggleMode() {
+        isLoginMode = !isLoginMode;
+        if (isLoginMode) {
+            authTitle.innerText = '🔐 Login Akun';
+            authBtn.innerText = 'Login';
+            switchAuthBtn.innerText = 'Belum punya akun? Daftar';
+        } else {
+            authTitle.innerText = '📝 Registrasi Akun';
+            authBtn.innerText = 'Daftar';
+            switchAuthBtn.innerText = 'Sudah punya akun? Login';
+        }
+        authError.innerText = '';
+    }
+
+    // Event handler tombol auth
+    function handleAuth() {
+        const email = emailInput.value.trim();
+        const password = passwordInput.value.trim();
+        if (!email || !password) {
+            authError.innerText = 'Email dan password harus diisi.';
+            return;
+        }
+        let success = false;
+        if (isLoginMode) {
+            success = login(email, password);
+        } else {
+            success = register(email, password);
+        }
+        if (success) {
+            // Tutup modal, tampilkan app, muat peta
+            authModal.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+            userGreeting.innerText = `👤 ${currentUser.email}`;
+            // Mulai inisialisasi peta dan data
+            initializeMapAndData();
+        }
+    }
+
+    // ========== INISIALISASI PETA & DATA (setelah login) ==========
+    let map, geoJsonData, emissionChart, ndviChart, potensiChart;
+    let currentFeature = null;
+
+    // Fungsi proyeksi
+    proj4.defs("EPSG:32749", "+proj=utm +zone=49 +south +datum=WGS84 +units=m +no_defs");
+    proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+
+    function reprojectGeometry(geom) {
+        if (geom.type === "Polygon") {
+            geom.coordinates = geom.coordinates.map(ring =>
+                ring.map(coord => {
+                    var [lng, lat] = proj4("EPSG:32749", "EPSG:4326", coord);
+                    return [lng, lat];
+                })
+            );
+        } else if (geom.type === "MultiPolygon") {
+            geom.coordinates = geom.coordinates.map(poly =>
+                poly.map(ring =>
+                    ring.map(coord => {
+                        var [lng, lat] = proj4("EPSG:32749", "EPSG:4326", coord);
+                        return [lng, lat];
+                    })
+                )
+            );
+        }
+        return geom;
+    }
+
+    function getColor(kelas) {
+        if (!kelas) return '#888888';
+        if (kelas === 'SANGAT BERPOTENSI') return '#1b5e20';
+        if (kelas === 'BERPOTENSI') return '#4caf50';
+        if (kelas === 'CUKUP BERPOTENSI') return '#ff9800';
+        if (kelas === 'KURANG BERPOTENSI') return '#ffc107';
+        if (kelas === 'TIDAK BERPOTENSI') return '#f44336';
+        return '#3388ff';
+    }
+
+    function updateChartsForFeature(feature) {
+        if (!feature) return;
+        const p = feature.properties;
+        const carbonTon = (p.TOTAL_CARB || 0) / 1000;
+        const co2Ton = (p.TOTAL_CO2 || 0) / 1000;
+        const agb = p.AGBmean || 0;
+        const ndvi = p.NDVI_MEANm || 0;
+
+        if (emissionChart) emissionChart.destroy();
+        const ctx1 = document.getElementById('emissionChart').getContext('2d');
+        emissionChart = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: ['Total Karbon', 'CO₂ Emisi'],
+                datasets: [{
+                    label: 'Ton',
+                    data: [carbonTon, co2Ton],
+                    backgroundColor: ['#4caf50', '#ff9800'],
+                    borderRadius: 8,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { labels: { color: 'white' } },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toFixed(0)} ton` } }
+                },
+                scales: {
+                    y: { ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.2)' } },
+                    x: { ticks: { color: 'white' }, grid: { display: false } }
+                }
+            }
+        });
+
+        if (ndviChart) ndviChart.destroy();
+        const ctx2 = document.getElementById('ndviChart').getContext('2d');
+        ndviChart = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: ['AGB (Biomassa)', 'NDVI'],
+                datasets: [{
+                    label: 'Nilai',
+                    data: [agb, ndvi],
+                    backgroundColor: ['#2196f3', '#9c27b0'],
+                    borderRadius: 8,
+                    barPercentage: 0.6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { labels: { color: 'white' } },
+                    tooltip: { callbacks: { label: (ctx) => ctx.raw.toFixed(3) } }
+                },
+                scales: {
+                    y: { ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.2)' } },
+                    x: { ticks: { color: 'white' }, grid: { display: false } }
+                }
+            }
+        });
+
+        document.getElementById('selectedDetail').innerHTML = `
+            <strong>${p.NAMOBJ || 'Desa'}</strong><br>
+            Kecamatan: ${p.WADMKC || '-'}<br>
+            Kabupaten: ${p.WADMKK || '-'}<br>
+            Luas: ${p.LUAS_AREA ? p.LUAS_AREA.toLocaleString() : '-'} m²<br>
+            <span>Karbon Total:</span> ${carbonTon.toFixed(0)} ton<br>
+            <span>CO₂ Emisi:</span> ${co2Ton.toFixed(0)} ton<br>
+            <span>AGB:</span> ${agb.toFixed(3)}<br>
+            <span>NDVI:</span> ${ndvi.toFixed(3)}<br>
+            <span>Potensi:</span> ${p.KELAS_CTPI || '-'}
+        `;
+    }
+
+    function updatePieChartAll(features) {
+        if (!features) return;
+        const kelasCount = {};
+        features.forEach(f => {
+            let k = f.properties.KELAS_CTPI || "Tidak Terklasifikasi";
+            kelasCount[k] = (kelasCount[k] || 0) + 1;
+        });
+        const labels = Object.keys(kelasCount);
+        const data = Object.values(kelasCount);
+        const colors = labels.map(l => getColor(l));
+        if (potensiChart) potensiChart.destroy();
+        const ctx = document.getElementById('potensiChart').getContext('2d');
+        potensiChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: 'white',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: 'white', font: { size: 9 } } }
+                }
+            }
+        });
+    }
+
+    function initializeMapAndData() {
+        // Tampilkan loading screen
+        loadingScreen.classList.remove('hidden');
+        // Inisialisasi peta
+        map = L.map('map').setView([-8.1, 112.6], 9);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CartoDB',
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(map);
+
+        // Fetch GeoJSON
+        fetch('Percobaan Webgis Tubes Aseli.geojson')
+            .then(res => res.json())
+            .then(data => {
+                geoJsonData = data;
+                geoJsonData.features.forEach(f => {
+                    f.geometry = reprojectGeometry(f.geometry);
+                });
+                const geojsonLayer = L.geoJSON(geoJsonData, {
+                    style: function(feature) {
+                        return {
+                            fillColor: getColor(feature.properties.KELAS_CTPI),
+                            weight: 1.2,
+                            opacity: 0.6,
+                            color: '#ffffff',
+                            fillOpacity: 0.6
+                        };
+                    },
+                    onEachFeature: function(feature, layer) {
+                        layer.on('click', () => {
+                            currentFeature = feature;
+                            updateChartsForFeature(feature);
+                            layer.bindPopup(`<b>${feature.properties.NAMOBJ}</b><br>Klik untuk update grafik`).openPopup();
+                        });
+                    }
+                }).addTo(map);
+                map.fitBounds(geojsonLayer.getBounds());
+                updatePieChartAll(geoJsonData.features);
+                if (geoJsonData.features.length) {
+                    updateChartsForFeature(geoJsonData.features[0]);
+                    currentFeature = geoJsonData.features[0];
+                }
+                // Sembunyikan loading screen setelah semua selesai
+                loadingScreen.classList.add('hidden');
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('selectedDetail').innerHTML = '<span style="color:red;">Gagal memuat data GeoJSON. Pastikan file tersedia.</span>';
+                loadingScreen.classList.add('hidden');
+            });
+    }
+
+    // ========== EVENT LISTENER ==========
+    authBtn.addEventListener('click', handleAuth);
+    switchAuthBtn.addEventListener('click', toggleMode);
+    logoutBtn.addEventListener('click', () => {
+        logout();
+        // Reset peta jika perlu (hanya sembunyikan)
+        if (map) {
+            map.remove();
+            map = null;
+        }
+    });
+
+    // Cek apakah user sudah login saat halaman dimuat
+    if (loadUserFromStorage()) {
+        // User sudah login, langsung tampilkan app dan muat peta
+        authModal.classList.add('hidden');
+        appContainer.classList.remove('hidden');
+        userGreeting.innerText = `👤 ${currentUser.email}`;
+        initializeMapAndData();
+    } else {
+        // Belum login, tampilkan modal login, app dan loading disembunyikan
+        authModal.classList.remove('hidden');
+        appContainer.classList.add('hidden');
+        loadingScreen.classList.add('hidden'); // loading screen tidak perlu karena belum login
+    }
+</script>
+</body>
+</html>
